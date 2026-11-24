@@ -3,6 +3,7 @@ import { PanelView } from "@/components/editor/panels/assets/views/base-panel";
 import { useEditor } from "@/editor/use-editor";
 import { DEFAULTS } from "@/timeline/defaults";
 import { buildTextElement } from "@/timeline/element-utils";
+import { resolveDefaultTextFontSize } from "@/text/typography";
 import type { MediaTime } from "@/wasm";
 
 export function TextView() {
@@ -12,8 +13,22 @@ export function TextView() {
 		const activeScene = editor.scenes.getActiveScene();
 		if (!activeScene) return;
 
+		const canvasSize = editor.project.getActiveOrNull()?.settings.canvasSize;
+		const fontSize = canvasSize
+			? resolveDefaultTextFontSize({
+					canvasSize,
+					content: String(DEFAULTS.text.element.params.content),
+				})
+			: DEFAULTS.text.element.params.fontSize;
+
 		const element = buildTextElement({
-			raw: DEFAULTS.text.element,
+			raw: {
+				...DEFAULTS.text.element,
+				params: {
+					...DEFAULTS.text.element.params,
+					fontSize,
+				},
+			},
 			startTime: currentTime,
 		});
 
