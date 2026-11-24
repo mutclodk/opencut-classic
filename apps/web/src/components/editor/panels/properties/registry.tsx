@@ -23,6 +23,7 @@ import {
 	DashboardSpeed02Icon,
 } from "@hugeicons/core-free-icons";
 import { ElementParamsTab } from "./components/element-params-tab";
+import { TextStyleToggles } from "./components/text-style-toggles";
 import { ClipEffectsTab, StandaloneEffectTab } from "@/effects/components/effects-tab";
 import { MasksTab } from "@/masks/components/masks-tab";
 import { SpeedTab } from "@/speed/components/speed-tab";
@@ -39,15 +40,15 @@ const TRANSFORM_PARAM_KEYS = [
 
 const BLENDING_PARAM_KEYS = ["opacity", "blendMode"] as const;
 const AUDIO_PARAM_KEYS = ["volume", "muted"] as const;
+// fontWeight, fontStyle and textDecoration are intentionally not listed
+// here: they are edited through the TextStyleToggles buttons rendered above
+// this tab instead of dropdown selects.
 const TEXT_PARAM_KEYS = [
 	"content",
 	"fontFamily",
 	"fontSize",
 	"color",
 	"textAlign",
-	"fontWeight",
-	"fontStyle",
-	"textDecoration",
 	"letterSpacing",
 	"lineHeight",
 	"background.enabled",
@@ -182,12 +183,15 @@ function buildTextTab({ element }: { element: TextElement }): PropertiesTabDef {
 		label: "Text",
 		icon: <HugeiconsIcon icon={TextFontIcon} size={16} />,
 		content: ({ trackId }) => (
-			<ElementParamsTab
-				element={element}
-				trackId={trackId}
-				paramKeys={TEXT_PARAM_KEYS}
-				sectionKey="text"
-			/>
+			<>
+				<TextStyleToggles element={element} trackId={trackId} />
+				<ElementParamsTab
+					element={element}
+					trackId={trackId}
+					paramKeys={TEXT_PARAM_KEYS}
+					sectionKey="text"
+				/>
+			</>
 		),
 	};
 }
