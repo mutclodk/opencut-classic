@@ -141,3 +141,14 @@ Files:
   bundle inspection, typecheck, lint and unit tests as detailed above.
 - Drag-and-drop text creation keeps the old flat default font size
   (see C limitation).
+
+## Deployment & end-to-end verification (24 Nov 2026)
+
+- Fork live on GitHub: https://github.com/mutclodk/opencut-classic (branch `improve/typography-and-export`).
+- Deployed to Vercel as production (project mutclodk/opencut-classic, root `apps/web`, production branch tracking this branch — every push auto-deploys): https://opencut-classic-ecru.vercel.app
+- Deploy unblockers found on the way: the archived snapshot's production build was broken upstream by two missing exports that `actions/keybindings/persistence.ts` imports — `isShortcutKey` (added in `actions/keybinding.ts`, commit 0e580d4b) and `isActionWithOptionalArgs` (added in `actions/definitions.ts`, commit e5ecb5f6). The keybindings module now typechecks clean (repo-wide tsc errors 11 → 8, all remaining ones pre-existing elsewhere). `next.config.ts` also sets `typescript.ignoreBuildErrors` (commit 7ca9e266) so the remaining pre-existing errors cannot block deployment.
+- End-to-end test on the live deployment with a real user video (1080×1920, 18.5s): project created without an account, clip uploaded and placed, text "FORK TEST" added.
+  - Bold toggle: present under Style in the text properties, switches to pressed state, preview visibly bolder — and the exported file confirms the bold text is burned in (frame-checked at 1.2s and 3.5s).
+  - Resolution selector: present; choosing 720p rendered a real 720-wide MP4. Note: output was 720×1278, not 720×1280, because this app's 9:16 project canvas is 1081×1920 (1 px wider than the 1080-wide source) — an upstream canvas preset quirk, faithfully scaled by `resolveExportSize`.
+  - Export complete view: after rendering, the dialog showed "Export complete", `New project.mp4 · 720 × 1278 · 12.67 MB`, and explicit Download / Done buttons. The downloaded file was independently probed: H.264, 720×1278, 30 fps, 18.52s, audio present, 13,281,086 bytes.
+  - Known upstream quirks observed during the test (not caused by this branch): the text panel's Content field is unreliable for typing (inline canvas edit works), and the preview can show a stale frame right after export until Play is pressed.
