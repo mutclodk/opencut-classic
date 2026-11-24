@@ -1,6 +1,10 @@
 import type { EditorCore } from "@/core";
 import type { RootNode } from "@/services/renderer/nodes/root-node";
-import type { ExportOptions, ExportResult } from "@/export";
+import {
+	resolveExportSize,
+	type ExportOptions,
+	type ExportResult,
+} from "@/export";
 import { CanvasRenderer } from "@/services/renderer/canvas-renderer";
 import { SceneExporter } from "@/services/renderer/scene-exporter";
 import { buildScene } from "@/services/renderer/scene-builder";
@@ -147,7 +151,7 @@ export class RendererManager {
 		onProgress?: ({ progress }: { progress: number }) => void;
 		onCancel?: () => boolean;
 	}): Promise<ExportResult> {
-		const { format, quality, fps, includeAudio } = options;
+		const { format, quality, fps, includeAudio, resolution } = options;
 
 		try {
 			const tracks = this.editor.scenes.getActiveScene().tracks;
@@ -184,9 +188,16 @@ export class RendererManager {
 				background: activeProject.settings.background,
 			});
 
+			const exportSize = resolveExportSize({
+				canvasSize,
+				resolution,
+			});
+
 			const exporter = new SceneExporter({
 				width: canvasSize.width,
 				height: canvasSize.height,
+				outputWidth: exportSize.width,
+				outputHeight: exportSize.height,
 				fps: exportFps,
 				format,
 				quality,

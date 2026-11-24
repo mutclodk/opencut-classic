@@ -23,6 +23,9 @@ import { CanvasRenderer } from "./canvas-renderer";
 type ExportParams = {
 	width: number;
 	height: number;
+	/** Output size after the resolution selector is applied. Defaults to the render size (no scaling). */
+	outputWidth?: number;
+	outputHeight?: number;
 	fps: FrameRate;
 	format: ExportFormat;
 	quality: ExportQuality;
@@ -50,12 +53,16 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 	private quality: ExportQuality;
 	private shouldIncludeAudio: boolean;
 	private audioBuffer?: AudioBuffer;
+	private outputCanvas: OffscreenCanvas | null;
+	private outputContext: OffscreenCanvasRenderingContext2D | null;
 
 	private isCancelled = false;
 
 	constructor({
 		width,
 		height,
+		outputWidth,
+		outputHeight,
 		fps,
 		format,
 		quality,
@@ -73,6 +80,39 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 		this.quality = quality;
 		this.shouldIncludeAudio = shouldIncludeAudio ?? false;
 		this.audioBuffer = audioBuffer;
+
+		const targetWidth = outputWidth ?? width;
+		const targetHeight = outputHeight ?? height;
+		if (targetWidth !== width || targetHeight !== height) {
+			this.outputCanvas = new OffscreenCanvas(targetWidth, targetHeight);
+			this.outputContext = this.outputCanvas.getContext("2d");
+		} else {
+			this.outputCanvas = null;
+			this.outputContext = null;
+		}
+	}
+
+	/**
+	 * The canvas the encoder reads from. When a smaller output resolution was
+	 * requested this is the downscale target; otherwise it is the renderer's
+	 * own output canvas.
+	 */
+	private getEncoderCanvas(): OffscreenCanvas | HTMLCanvasElement {
+		return this.outputCanvas ?? this.renderer.getOutputCanvas();
+	}
+
+	/** Copies the latest rendered frame into the encoder canvas, scaling it to the output size when needed. */
+	private syncEncoderCanvas(): void {
+		if (!this.outputCanvas || !this.outputContext) {
+			return;
+		}
+		this.outputContext.drawImage(
+			this.renderer.getOutputCanvas(),
+			0,
+			0,
+			this.outputCanvas.width,
+			this.outputCanvas.height,
+		);
 	}
 
 	cancel(): void {
@@ -99,7 +139,7 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 			target: new BufferTarget(),
 		});
 
-		const videoSource = new CanvasSource(this.renderer.getOutputCanvas(), {
+		const videoSource = new CanvasSource(this.getEncoderCanvas(), {
 			codec: this.format === "webm" ? "vp9" : "avc",
 			bitrate: qualityMap[this.quality],
 		});
@@ -144,6 +184,7 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 			const timeTicks = i * ticksPerFrame;
 			const timeSeconds = mediaTimeToSeconds({ time: timeTicks });
 			await this.renderer.render({ node: rootNode, time: timeTicks });
+			this.syncEncoderCanvas();
 			await videoSource.add(timeSeconds, 1 / fpsFloat);
 
 			this.emit("progress", i / frameCount);

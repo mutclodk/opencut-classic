@@ -18,13 +18,16 @@ import {
 	getExportMimeType,
 	getExportFileExtension,
 	downloadBuffer,
+	resolveExportSize,
 } from "@/export";
 import { Check, Copy, Download, RotateCcw } from "lucide-react";
 import {
 	EXPORT_FORMAT_VALUES,
 	EXPORT_QUALITY_VALUES,
+	EXPORT_RESOLUTION_VALUES,
 	type ExportFormat,
 	type ExportQuality,
+	type ExportResolution,
 } from "@/export";
 import {
 	Section,
@@ -42,6 +45,27 @@ function isExportFormat(value: string): value is ExportFormat {
 function isExportQuality(value: string): value is ExportQuality {
 	return EXPORT_QUALITY_VALUES.some((qualityValue) => qualityValue === value);
 }
+
+function isExportResolution(value: string): value is ExportResolution {
+	return EXPORT_RESOLUTION_VALUES.some(
+		(resolutionValue) => resolutionValue === value,
+	);
+}
+
+function formatFileSize({ byteLength }: { byteLength: number }): string {
+	if (byteLength < 1024 * 1024) {
+		return `${(byteLength / 1024).toFixed(1)} KB`;
+	}
+	return `${(byteLength / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+type CompletedExport = {
+	buffer: ArrayBuffer;
+	filename: string;
+	mimeType: string;
+	width: number;
+	height: number;
+};
 
 export function ExportButton() {
 	const [isExportPopoverOpen, setIsExportPopoverOpen] = useState(false);
@@ -110,9 +134,20 @@ function ExportPopover({
 	const [shouldIncludeAudio, setShouldIncludeAudio] = useState<boolean>(
 		DEFAULT_EXPORT_OPTIONS.includeAudio ?? true,
 	);
+	const [resolution, setResolution] = useState<ExportResolution>(
+		DEFAULT_EXPORT_OPTIONS.resolution ?? "source",
+	);
+	const [completedExport, setCompletedExport] =
+		useState<CompletedExport | null>(null);
+
+	const exportSize = resolveExportSize({
+		canvasSize: activeProject.settings.canvasSize,
+		resolution,
+	});
 
 	const handleExport = async () => {
 		if (!activeProject) return;
+		setCompletedExport(null);
 
 		const result = await editor.project.export({
 			options: {
@@ -120,6 +155,7 @@ function ExportPopover({
 				quality,
 				fps: activeProject.settings.fps,
 				includeAudio: shouldIncludeAudio,
+				resolution,
 			},
 		});
 
@@ -129,15 +165,35 @@ function ExportPopover({
 		}
 
 		if (result.success && result.buffer) {
-			downloadBuffer({
+			const completed: CompletedExport = {
 				buffer: result.buffer,
 				filename: `${activeProject.metadata.name}${getExportFileExtension({ format })}`,
 				mimeType: getExportMimeType({ format }),
+				width: exportSize.width,
+				height: exportSize.height,
+			};
+			downloadBuffer({
+				buffer: completed.buffer,
+				filename: completed.filename,
+				mimeType: completed.mimeType,
 			});
-
-			editor.project.clearExportState();
-			onOpenChange(false);
+			setCompletedExport(completed);
 		}
+	};
+
+	const handleDownloadCompleted = () => {
+		if (!completedExport) return;
+		downloadBuffer({
+			buffer: completedExport.buffer,
+			filename: completedExport.filename,
+			mimeType: completedExport.mimeType,
+		});
+	};
+
+	const handleDone = () => {
+		setCompletedExport(null);
+		editor.project.clearExportState();
+		onOpenChange(false);
 	};
 
 	const handleCancel = () => {
@@ -146,7 +202,13 @@ function ExportPopover({
 
 	return (
 		<PopoverContent className="bg-background mr-4 flex w-80 flex-col p-0">
-			{exportResult && !exportResult.success ? (
+			{completedExport ? (
+				<ExportSuccess
+					completedExport={completedExport}
+					onDownload={handleDownloadCompleted}
+					onDone={handleDone}
+				/>
+			) : exportResult && !exportResult.success ? (
 				<ExportError
 					error={exportResult.error || "Unknown error occurred"}
 					onRetry={handleExport}
@@ -233,6 +295,44 @@ function ExportPopover({
 
 									<Section collapsible defaultOpen={false}>
 										<SectionHeader>
+											<SectionTitle>Resolution</SectionTitle>
+										</SectionHeader>
+										<SectionContent>
+											<RadioGroup
+												value={resolution}
+												onValueChange={(value) => {
+													if (isExportResolution(value)) {
+														setResolution(value);
+													}
+												}}
+											>
+												<div className="flex items-center space-x-2">
+													<RadioGroupItem value="source" id="source" />
+													<Label htmlFor="source">
+														Source - Project resolution
+													</Label>
+												</div>
+												<div className="flex items-center space-x-2">
+													<RadioGroupItem value="1080p" id="1080p" />
+													<Label htmlFor="1080p">1080p</Label>
+												</div>
+												<div className="flex items-center space-x-2">
+													<RadioGroupItem value="720p" id="720p" />
+													<Label htmlFor="720p">720p</Label>
+												</div>
+												<div className="flex items-center space-x-2">
+													<RadioGroupItem value="480p" id="480p" />
+													<Label htmlFor="480p">480p</Label>
+												</div>
+											</RadioGroup>
+											<p className="text-muted-foreground pt-2 text-xs">
+												Output size: {exportSize.width} × {exportSize.height}
+											</p>
+										</SectionContent>
+									</Section>
+
+									<Section collapsible defaultOpen={false}>
+										<SectionHeader>
 											<SectionTitle>Audio</SectionTitle>
 										</SectionHeader>
 										<SectionContent>
@@ -286,6 +386,49 @@ function ExportPopover({
 				</>
 			)}
 		</PopoverContent>
+	);
+}
+
+function ExportSuccess({
+	completedExport,
+	onDownload,
+	onDone,
+}: {
+	completedExport: CompletedExport;
+	onDownload: () => void;
+	onDone: () => void;
+}) {
+	return (
+		<div className="space-y-4 p-3">
+			<div className="flex flex-col gap-1.5">
+				<p className="text-sm font-medium">Export complete</p>
+				<p className="text-muted-foreground text-xs">
+					{completedExport.filename} · {completedExport.width} ×{" "}
+					{completedExport.height} ·{" "}
+					{formatFileSize({ byteLength: completedExport.buffer.byteLength })}
+				</p>
+				<p className="text-muted-foreground text-xs">
+					Your download should have started automatically. Use the button
+					below if it did not.
+				</p>
+			</div>
+
+			<div className="flex gap-2">
+				<Button size="sm" className="h-8 flex-1 text-xs" onClick={onDownload}>
+					<Download />
+					Download
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					className="h-8 flex-1 text-xs"
+					onClick={onDone}
+				>
+					<Check />
+					Done
+				</Button>
+			</div>
+		</div>
 	);
 }
 
